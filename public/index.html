@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Dashboard</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      padding: 20px;
+    }
+    .section {
+      margin-bottom: 20px;
+    }
+    h1, h2 {
+      margin: 0 0 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      padding: 10px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Real-Time Dashboard</h1>
+
+    <div class="section">
+      <h2>Key Metrics</h2>
+      <p>Total Trades: <span id="totalTrades">0</span></p>
+      <p>Open Trades: <span id="openTrades">0</span></p>
+      <p>Closed Trades: <span id="closedTrades">0</span></p>
+      <p>Net Profit/Loss: <span id="netProfitLoss">0</span></p>
+    </div>
+
+    <div class="section">
+      <h2>Recent Trades</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Token</th>
+            <th>Tx Hash</th>
+            <th>Invested</th>
+            <th>Value</th>
+            <th>P/L</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="recentTrades">
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    socket.on('tradeData', (data) => {
+      // Update metrics
+      document.getElementById('totalTrades').textContent = data.totalTrades;
+      document.getElementById('openTrades').textContent = data.openTrades;
+      document.getElementById('closedTrades').textContent = data.closedTrades;
+      document.getElementById('netProfitLoss').textContent = data.netProfitLoss.toFixed(4);
+
+      // Update recent trades
+      const tradesTable = document.getElementById('recentTrades');
+      tradesTable.innerHTML = data.trades.map(trade => `
+        <tr>
+          <td>${trade.tokenAddress}</td>
+          <td><a href="https://etherscan.io/tx/${trade.txHash}" target="_blank">${trade.txHash.slice(0, 10)}...</a></td>
+          <td>${trade.amountInvested.toFixed(4)}</td>
+          <td>${trade.currentValue ? trade.currentValue.toFixed(4) : 'N/A'}</td>
+          <td>${trade.profitLoss ? trade.profitLoss.toFixed(4) : 'N/A'}</td>
+          <td>${trade.status}</td>
+        </tr>
+      `).join('');
+    });
+  </script>
+</body>
+</html>
