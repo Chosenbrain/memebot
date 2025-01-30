@@ -82,52 +82,56 @@ async function checkLiquidity(tokenAddress) {
 
 // Detect honeypots
 async function isHoneypot(tokenAddress, amountIn, signer) {
-    const uniswapRouterAddress = '0xE592427A0AEce92De3Edee1F18E0157C05861564'; // Uniswap v3 Router
-    const router = new ethers.Contract(
+  if (!ethers.utils.isAddress(tokenAddress)) {
+      console.error(`Invalid token address: ${tokenAddress}`);
+      return false;
+  }
+
+  const uniswapRouterAddress = '0xE592427A0AEce92De3Edee1F18E0157C05861564'; // Uniswap v3 Router
+  const router = new ethers.Contract(
       uniswapRouterAddress,
       [
-        "function exactInputSingle(tuple(address,address,uint24,address,uint256,uint256,uint160)) external payable returns (uint256)"
+          "function exactInputSingle(tuple(address,address,uint24,address,uint256,uint256,uint160)) external payable returns (uint256)"
       ],
       signer
-    );
-  
-    try {
+  );
+
+  try {
       const recipient = await signer.getAddress();
       if (!ethers.utils.isAddress(recipient)) {
-        console.error(`Invalid recipient address: ${recipient}`);
-        return false;
+          console.error(`Invalid recipient address: ${recipient}`);
+          return false;
       }
-  
+
       const path = {
-        tokenIn: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
-        tokenOut: tokenAddress,
-        fee: 3000,
-        recipient: recipient,
-        deadline: Math.floor(Date.now() / 1000) + 60 * 20,
-        amountIn: ethers.utils.parseEther(amountIn.toString()),
-        amountOutMinimum: 0,
-        sqrtPriceLimitX96: 0
+          tokenIn: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
+          tokenOut: tokenAddress,
+          fee: 3000,
+          recipient: recipient,
+          deadline: Math.floor(Date.now() / 1000) + 60 * 20,
+          amountIn: ethers.utils.parseEther(amountIn.toString()),
+          amountOutMinimum: 0,
+          sqrtPriceLimitX96: 0
       };
-  
+
       console.log(`Simulating buy/sell for token: ${tokenAddress}`);
       const tx = await router.exactInputSingle(path, {
-        value: ethers.utils.parseEther(amountIn.toString()),
-        gasLimit: 200000
+          value: ethers.utils.parseEther(amountIn.toString()),
+          gasLimit: 200000
       });
       await tx.wait();
-  
+
       const reversePath = { ...path, tokenIn: tokenAddress, tokenOut: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' };
       const sellTx = await router.exactInputSingle(reversePath, { gasLimit: 200000 });
       await sellTx.wait();
-  
+
       console.log(`Token ${tokenAddress} passed honeypot detection.`);
       return true;
-    } catch (error) {
+  } catch (error) {
       console.error(`Token ${tokenAddress} is a honeypot: ${error.message}`);
       return false;
-    }
   }
-  
+}
 
 // Check contract verification
 async function checkContractVerification(tokenAddress) {
@@ -296,7 +300,7 @@ const telegramToken = process.env.TELEGRAM_BOT_TOKEN; // Set this in your .env f
 const telegramChatId = process.env.TELEGRAM_CHAT_ID; // Set this in your .env file
 
 // Initialize the Telegram Bot
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false });
 // Global state to manage bot status
 let botRunning = true;
 
