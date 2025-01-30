@@ -81,57 +81,75 @@ async function checkLiquidity(tokenAddress) {
 }
 
 // Detect honeypots
+const ethers = require('ethers');
+
 async function isHoneypot(tokenAddress, amountIn, signer) {
-  if (!ethers.utils.isAddress(tokenAddress)) {
-      console.error(`Invalid token address: ${tokenAddress}`);
-      return false;
-  }
+    if (!ethers.utils.isAddress(tokenAddress)) {
+        console.error(`Invalid token address: ${tokenAddress}`);
+        return false;
+    }
 
-  const uniswapRouterAddress = '0xE592427A0AEce92De3Edee1F18E0157C05861564'; // Uniswap v3 Router
-  const router = new ethers.Contract(
-      uniswapRouterAddress,
-      [
-          "function exactInputSingle(tuple(address,address,uint24,address,uint256,uint256,uint160)) external payable returns (uint256)"
-      ],
-      signer
-  );
+    const uniswapRouterAddress = '0xE592427A0AEce92De3Edee1F18E0157C05861564'; // Uniswap V3 Router
+    const router = new ethers.Contract(
+        uniswapRouterAddress,
+        [
+            "function exactInputSingle(tuple(address,address,uint24,address,uint256,uint256,uint160)) external payable returns (uint256)"
+        ],
+        signer
+    );
 
-  try {
-      const recipient = await signer.getAddress();
-      if (!ethers.utils.isAddress(recipient)) {
-          console.error(`Invalid recipient address: ${recipient}`);
-          return false;
-      }
+    try {
+        const recipient = await signer.getAddress();
+        if (!ethers.utils.isAddress(recipient)) {
+            console.error(`Invalid recipient address: ${recipient}`);
+            return false;
+        }
 
-      const path = {
-          tokenIn: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
-          tokenOut: tokenAddress,
-          fee: 3000,
-          recipient: recipient,
-          deadline: Math.floor(Date.now() / 1000) + 60 * 20,
-          amountIn: ethers.utils.parseEther(amountIn.toString()),
-          amountOutMinimum: 0,
-          sqrtPriceLimitX96: 0
-      };
+        // Validate the amount
+        const amountInWei = ethers.utils.parseEther(amountIn.toString());
+        if (amountInWei.isZero() || amountInWei.lt(ethers.constants.Zero)) {
+            console.error('Invalid amountIn value');
+            return false;
+        }
 
-      console.log(`Simulating buy/sell for token: ${tokenAddress}`);
-      const tx = await router.exactInputSingle(path, {
-          value: ethers.utils.parseEther(amountIn.toString()),
-          gasLimit: 200000
-      });
-      await tx.wait();
+        // Path for buying the token
+        const path = {
+            tokenIn: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
+            tokenOut: tokenAddress,
+            fee: 3000,
+            recipient: recipient,
+            deadline: Math.floor(Date.now() / 1000) + 60 * 20,
+            amountIn: amountInWei,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        };
 
-      const reversePath = { ...path, tokenIn: tokenAddress, tokenOut: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' };
-      const sellTx = await router.exactInputSingle(reversePath, { gasLimit: 200000 });
-      await sellTx.wait();
+        console.log(`Simulating buy for token: ${tokenAddress}`);
+        const tx = await router.exactInputSingle(path, {
+            value: amountInWei,
+            gasLimit: 200000
+        });
+        await tx.wait();
 
-      console.log(`Token ${tokenAddress} passed honeypot detection.`);
-      return true;
-  } catch (error) {
-      console.error(`Token ${tokenAddress} is a honeypot: ${error.message}`);
-      return false;
-  }
+        // Path for selling the token back
+        const reversePath = {
+            ...path,
+            tokenIn: tokenAddress,
+            tokenOut: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+        };
+
+        console.log(`Simulating sell for token: ${tokenAddress}`);
+        const sellTx = await router.exactInputSingle(reversePath, { gasLimit: 200000 });
+        await sellTx.wait();
+
+        console.log(`Token ${tokenAddress} passed honeypot detection.`);
+        return true;
+    } catch (error) {
+        console.error(`Token ${tokenAddress} is a honeypot: ${error.message}`);
+        return false;
+    }
 }
+
 
 // Check contract verification
 async function checkContractVerification(tokenAddress) {
