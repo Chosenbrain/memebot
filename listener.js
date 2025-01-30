@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { ethers } = require('ethers');
+const fs = require('fs');
 const axios = require('axios'); // For Etherscan API requests
 const nodemailer = require('nodemailer'); // For email notifications
 
@@ -11,7 +12,7 @@ console.log("Starting the listener...");
 
 // Ethereum provider setup
 const provider = new ethers.providers.JsonRpcProvider(
-  `https://mainnet.infura.io/v3/${process.env.INFURA_API_KEY}`
+  `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
 );
 console.log("Connected to Ethereum Mainnet");
 
@@ -211,6 +212,11 @@ async function executeTrade(tokenAddress) {
 
 // Listen for real-time PairCreated events
 factoryContract.on('PairCreated', async (token0, token1, pair) => {
+  if (!botRunning) {
+    console.log(`Bot is stopped. Ignoring new token: ${token0}`);
+    return;
+  }
+
   console.log(`Live Event Detected! New Pair:\nToken 0: ${token0}\nToken 1: ${token1}\nPair: ${pair}`);
   try {
     const signer = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
@@ -224,6 +230,35 @@ factoryContract.on('PairCreated', async (token0, token1, pair) => {
     console.error(`Error processing PairCreated event: ${error.message}`);
   }
 });
+
+const { TwitterApi } = require('twitter-api-v2');
+
+const twitterClient = new TwitterApi(process.env.TWITTER_BEARER_TOKEN);
+
+// Function to get trending topics
+async function getTwitterTrends(woeid = 1) { // 1 is for Worldwide trends
+  try {
+    const response = await twitterClient.v1.trendsByPlace(woeid);
+
+    
+    const trends = response[0].trends.map(trend => ({
+      name: trend.name,
+      tweetVolume: trend.tweet_volume || 0,
+    }));
+
+    // Filter trends with significant tweet volume
+    return trends.filter(t => t.tweetVolume > 10000);
+  } catch (error) {
+    console.error("Error fetching Twitter trends:", error.message);
+    return [];
+  }
+}
+
+// Example: Get Worldwide Trends
+getTwitterTrends().then(trends => {
+  console.log("Trending Topics on Twitter:", trends);
+});
+
 
 async function getPastEvents() {
     try {
@@ -342,6 +377,125 @@ async function sendTelegramNotification(message) {
   }
 }
 
+async function getSocialMediaSentiment(tokenSymbol) {
+  try {
+    const twitterResponse = await axios.get(`https://api.twitter.com/2/tweets/search/recent`, {
+      params: {
+        query: tokenSymbol,
+        "tweet.fields": "public_metrics",
+        max_results: 50
+      },
+      headers: {
+        Authorization: `Bearer ${process.env.TWITTER_API_KEY}`
+      }
+    });
+
+    const tweets = twitterResponse.data.data || [];
+    const positiveMentions = tweets.filter(tweet => tweet.text.includes("🚀") || tweet.text.includes("moon"));
+
+    return positiveMentions.length > 50; // Adjust threshold based on market conditions
+  } catch (error) {
+    console.error("Error fetching social media sentiment:", error.message);
+    return false;
+  }
+}
+
+async function checkLiquidity(tokenAddress) {
+  try {
+    const balance = await provider.getBalance(tokenAddress);
+    const minLiquidity = ethers.utils.parseEther('10'); // Dynamic liquidity threshold
+
+    return balance.gte(minLiquidity); 
+  } catch (err) {
+    console.error(`Error checking liquidity for ${tokenAddress}:`, err.message);
+    return false;
+  }
+}
+
+async function getSocialMediaSentiment(tokenSymbol) {
+  try {
+    const trends = await getTwitterTrends();
+
+    // Check if token name or symbol is in trending topics
+    const isTrending = trends.some(trend => trend.name.includes(tokenSymbol));
+
+    return isTrending;
+  } catch (error) {
+    console.error("Error checking social media sentiment:", error.message);
+    return false;
+  }
+}
+
+
+async function checkTokenSupplyAndDistribution(tokenAddress, signer) {
+  const token = new ethers.Contract(
+    tokenAddress,
+    ["function totalSupply() public view returns (uint256)", "function balanceOf(address account) public view returns (uint256)"],
+    signer
+  );
+
+  try {
+    const totalSupply = await token.totalSupply();
+    const ownerBalance = await token.balanceOf(await signer.getAddress());
+
+    const centralizationThreshold = 0.15; // Allow up to 15% ownership in one wallet
+    return ethers.utils.formatEther(ownerBalance) / ethers.utils.formatEther(totalSupply) <= centralizationThreshold;
+  } catch (error) {
+    console.error(`Error checking supply/distribution for ${tokenAddress}: ${error.message}`);
+    return false;
+  }
+}
+
+async function getTokenPerformance(tokenAddress) {
+  try {
+    const response = await axios.get(
+      `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${tokenAddress}&vs_currencies=usd`
+    );
+
+    const priceChange = response.data[tokenAddress.toLowerCase()]?.usd || 0;
+    return priceChange > 10; // Invest only if 24h price change > 10%
+  } catch (error) {
+    console.error(`Error fetching token performance: ${error.message}`);
+    return false;
+  }
+}
+
+async function validateToken(tokenAddress, signer) {
+  console.log(`Validating token: ${tokenAddress}`);
+
+  const passesLiquidity = await checkLiquidity(tokenAddress);
+  const passesHoneypot = await isHoneypot(tokenAddress, 1, signer);
+  const passesOwnership = await checkTokenSupplyAndDistribution(tokenAddress, signer);
+  const hasPositiveSentiment = await getSocialMediaSentiment(tokenAddress);
+  const hasGoodPerformance = await getTokenPerformance(tokenAddress);
+
+  return passesLiquidity && passesHoneypot && passesOwnership && hasPositiveSentiment && hasGoodPerformance;
+}
+
+function logMissedOpportunity(tokenAddress) {
+  fs.appendFileSync(
+    'missed_opportunities.json',
+    JSON.stringify({ tokenAddress, timestamp: new Date().toISOString() }, null, 2)
+  );
+}
+
+const RISK_LEVELS = {
+  LOW: { minLiquidity: 50, sentimentThreshold: 100 },
+  MEDIUM: { minLiquidity: 20, sentimentThreshold: 50 },
+  HIGH: { minLiquidity: 10, sentimentThreshold: 20 }
+};
+
+let currentRiskLevel = RISK_LEVELS.MEDIUM; // Default
+
+function setRiskLevel(level) {
+  if (RISK_LEVELS[level]) {
+    currentRiskLevel = RISK_LEVELS[level];
+    console.log(`Risk level updated to: ${level}`);
+  } else {
+    console.log("Invalid risk level.");
+  }
+}
+
 // Example usage: Notify about successful trade
 async function notifyTradeSuccessTelegram(tokenAddress, txHash) {
   const message = `🚀 *Trade Success!*\n\n` +
@@ -367,7 +521,6 @@ async function notifyTradeSuccess(tokenAddress, txHash) {
 // Fetch historical events
 getPastEvents().catch(err => console.error("Error fetching historical events:", err));
 
-const fs = require('fs');
 const path = require('path');
 
 const tradeLogPath = path.join(__dirname, 'tradeLog.json');
