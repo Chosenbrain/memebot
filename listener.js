@@ -81,8 +81,6 @@ async function checkLiquidity(tokenAddress) {
 }
 
 // Detect honeypots
-const ethers = require('ethers');
-
 async function isHoneypot(tokenAddress, amountIn, signer) {
     if (!ethers.utils.isAddress(tokenAddress)) {
         console.error(`Invalid token address: ${tokenAddress}`);
