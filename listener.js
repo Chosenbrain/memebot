@@ -316,7 +316,7 @@ const telegramToken = process.env.TELEGRAM_BOT_TOKEN; // Set this in your .env f
 const telegramChatId = process.env.TELEGRAM_CHAT_ID; // Set this in your .env file
 
 // Initialize the Telegram Bot
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 // Global state to manage bot status
 let botRunning = true;
 
