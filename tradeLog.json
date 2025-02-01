@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "tokenAddress": "0xTestTokenAddress",
+    "txHash": "0xTestTxHash",
+    "amountInvested": 0.001,
+    "valueAtTrade": 1.23,
+    "timestamp": "2025-02-01T22:51:36.372Z",
+    "status": "closed",
+    "currentValue": 0,
+    "profitLoss": -1.23
+  }
+]
