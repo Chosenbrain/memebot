@@ -13,7 +13,7 @@ app.use(express.static("public"));
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "https://memecoinbot.netlify.app", // Use your actual Netlify URL (without trailing slash)
+    origin: "https://ladirectmodel.com/", // Use your actual Netlify URL (without trailing slash)
     methods: ["GET", "POST"]
   }
 });
