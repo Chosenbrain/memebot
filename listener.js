@@ -203,14 +203,14 @@ async function isHoneypot(tokenAddress) {
     return false;
   } catch (err) {
     if (err.message && err.message.includes("missing revert data")) {
-      // Suppress logging for missing revert data and treat it as safe.
+      // Suppress logging and treat missing revert data as safe
       return false;
     }
-    // Log other errors normally and treat them as an indication the token is a honeypot.
     console.error("Honeypot error:", err.message);
     return true;
   }
 }
+
 
 
 async function checkContractVerification(tokenAddress) {
