@@ -188,7 +188,6 @@ async function isHoneypot(tokenAddress) {
       amountOutMinimum: 0,
       sqrtPriceLimitX96: 0
     };
-
     const buyOut = await router.callStatic.exactInputSingle(buyParams, { value: amountIn, gasLimit: 300000 });
     const sellParams = {
       tokenIn: tokenAddress,
@@ -200,19 +199,19 @@ async function isHoneypot(tokenAddress) {
       amountOutMinimum: 0,
       sqrtPriceLimitX96: 0
     };
-
     await router.callStatic.exactInputSingle(sellParams, { gasLimit: 300000 });
     return false;
   } catch (err) {
-    // Convert message to lowercase for a robust check.
+    // If the error message includes "missing revert data" (ignoring case), treat it as safe.
     if (err.message && err.message.toLowerCase().includes("missing revert data")) {
-      // Treat missing revert data as a non-fatal error.
       return false;
     }
     console.error("Honeypot error:", err.message);
     return true;
   }
 }
+
+
 
 async function checkContractVerification(tokenAddress) {
   try {
