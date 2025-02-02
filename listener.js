@@ -169,6 +169,7 @@ async function checkLiquidity(pairAddress) {
   }
 }
 
+
 async function isHoneypot(tokenAddress) {
   try {
     const router = new ethers.Contract(routerAddress, routerABI, signer);
@@ -186,11 +187,7 @@ async function isHoneypot(tokenAddress) {
       sqrtPriceLimitX96: 0
     };
 
-    const buyOut = await router.callStatic.exactInputSingle(buyParams, {
-      value: amountIn,
-      gasLimit: 300000
-    });
-
+    const buyOut = await router.callStatic.exactInputSingle(buyParams, { value: amountIn, gasLimit: 300000 });
     const sellParams = {
       tokenIn: tokenAddress,
       tokenOut: WETH,
@@ -205,15 +202,16 @@ async function isHoneypot(tokenAddress) {
     await router.callStatic.exactInputSingle(sellParams, { gasLimit: 300000 });
     return false;
   } catch (err) {
-    // If we encounter "missing revert data", we treat it as safe.
     if (err.message && err.message.includes("missing revert data")) {
-      console.warn("Honeypot warning (missing revert data):", err.message);
+      // Suppress logging for missing revert data and treat it as safe.
       return false;
     }
+    // Log other errors normally and treat them as an indication the token is a honeypot.
     console.error("Honeypot error:", err.message);
     return true;
   }
 }
+
 
 async function checkContractVerification(tokenAddress) {
   try {
