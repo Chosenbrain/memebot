@@ -15,7 +15,7 @@ const TRADE_AMOUNT = process.env.TRADE_AMOUNT || "0.001";
 let botRunning = true;
 
 // --- Provider & Signer ---
-// Using WebSocket provider here; adjust if needed.
+// Using WebSocket provider here (if you encounter DNS issues, consider HTTP)
 const provider = new ethers.providers.JsonRpcProvider(
   `wss://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
 );
@@ -43,7 +43,7 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASSWORD }
 });
 
-// Shared instances (injected from main.js)
+// Shared instances provided from main.js
 let telegramBot;
 const telegramChatId = process.env.TELEGRAM_CHAT_ID;
 let io;
@@ -54,6 +54,7 @@ if (!fs.existsSync(tradeLogPath)) {
 }
 
 // --- Helper Functions ---
+
 async function sendEmail(subject, text) {
   try {
     const info = await transporter.sendMail({
@@ -148,6 +149,7 @@ function generateSummary() {
 }
 
 // --- Token Validation Functions ---
+
 async function checkLiquidity(pairAddress) {
   try {
     const pair = new ethers.Contract(pairAddress, pairABI, provider);
@@ -184,7 +186,11 @@ async function isHoneypot(tokenAddress) {
       sqrtPriceLimitX96: 0
     };
 
-    const buyOut = await router.callStatic.exactInputSingle(buyParams, { value: amountIn, gasLimit: 300000 });
+    const buyOut = await router.callStatic.exactInputSingle(buyParams, {
+      value: amountIn,
+      gasLimit: 300000
+    });
+
     const sellParams = {
       tokenIn: tokenAddress,
       tokenOut: WETH,
@@ -199,8 +205,8 @@ async function isHoneypot(tokenAddress) {
     await router.callStatic.exactInputSingle(sellParams, { gasLimit: 300000 });
     return false;
   } catch (err) {
+    // If we encounter "missing revert data", we treat it as safe.
     if (err.message && err.message.includes("missing revert data")) {
-      // Treat missing revert data as a non-fatal error.
       console.warn("Honeypot warning (missing revert data):", err.message);
       return false;
     }
