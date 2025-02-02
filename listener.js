@@ -1,3 +1,4 @@
+// listener.js
 require("dotenv").config();
 const { ethers } = require("ethers");
 const fs = require("fs");
@@ -9,19 +10,20 @@ const blessed = require("blessed");
 const contrib = require("blessed-contrib");
 const schedule = require("node-schedule");
 
-// --- Constants & Globals ---
+// ===== Constants & Globals =====
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+// TRADE_AMOUNT should represent the amount in ETH equivalent to $1 (set appropriately in .env)
 const TRADE_AMOUNT = process.env.TRADE_AMOUNT || "0.001";
 let botRunning = true;
 
-// --- Provider & Signer ---
-// Using WebSocket provider here (if you encounter DNS issues, consider HTTP)
+// ===== Provider & Signer =====
+// Using WebSocket provider for real‑time events.
 const provider = new ethers.providers.JsonRpcProvider(
   `wss://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
 );
 const signer = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
 
-// --- Contract Setup ---
+// ===== Contract Setup =====
 const factoryAddress = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
 const factoryABI = ["event PairCreated(address indexed token0, address indexed token1, address pair, uint)"];
 const factoryContract = new ethers.Contract(factoryAddress, factoryABI, provider);
@@ -37,23 +39,24 @@ const routerABI = [
   "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256)"
 ];
 
-// --- Notification Setup ---
+// ===== Notification Setup =====
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASSWORD }
 });
 
-// Shared instances provided from main.js
-let telegramBot;
+// ===== Shared Instances (injected via main.js) =====
+let telegramBot; // Do not create here; use the shared instance.
 const telegramChatId = process.env.TELEGRAM_CHAT_ID;
-let io;
+let io; // Shared Socket.IO instance.
 
+// ===== Trade Log Setup =====
 const tradeLogPath = path.join(__dirname, "tradeLog.json");
 if (!fs.existsSync(tradeLogPath)) {
   fs.writeFileSync(tradeLogPath, JSON.stringify([]));
 }
 
-// --- Helper Functions ---
+// ===== Helper Functions =====
 
 async function sendEmail(subject, text) {
   try {
@@ -148,7 +151,7 @@ function generateSummary() {
   }
 }
 
-// --- Token Validation Functions ---
+// ===== Token Validation Functions =====
 
 async function checkLiquidity(pairAddress) {
   try {
@@ -168,7 +171,6 @@ async function checkLiquidity(pairAddress) {
     return false;
   }
 }
-
 
 async function isHoneypot(tokenAddress) {
   try {
@@ -202,16 +204,15 @@ async function isHoneypot(tokenAddress) {
     await router.callStatic.exactInputSingle(sellParams, { gasLimit: 300000 });
     return false;
   } catch (err) {
-    if (err.message && err.message.includes("missing revert data")) {
-      // Suppress logging and treat missing revert data as safe
+    // Convert message to lowercase for a robust check.
+    if (err.message && err.message.toLowerCase().includes("missing revert data")) {
+      // Treat missing revert data as a non-fatal error.
       return false;
     }
     console.error("Honeypot error:", err.message);
     return true;
   }
 }
-
-
 
 async function checkContractVerification(tokenAddress) {
   try {
@@ -323,7 +324,7 @@ async function executeTrade(tokenAddress) {
   }
 }
 
-// --- Event Listener for Uniswap PairCreated ---
+// ===== Event Listener for Uniswap PairCreated =====
 factoryContract.on("PairCreated", async (token0, token1, pair) => {
   if (!botRunning) return;
   if (io) io.emit("log", `New Pair Detected: token0: ${token0}, token1: ${token1}, pair: ${pair}`);
@@ -343,7 +344,7 @@ factoryContract.on("PairCreated", async (token0, token1, pair) => {
   }
 });
 
-// --- Telegram Command Handlers & Callback Query Handling ---
+// ===== Telegram Command Handlers & Callback Query Handling =====
 function setupTelegramCommands() {
   telegramBot.onText(/\/menu/, (msg) => {
     if (msg.chat.id.toString() === telegramChatId) {
