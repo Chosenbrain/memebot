@@ -1,4 +1,3 @@
-// listener.js
 require("dotenv").config();
 const { ethers } = require("ethers");
 const fs = require("fs");
@@ -15,10 +14,10 @@ const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 const TRADE_AMOUNT = process.env.TRADE_AMOUNT || "0.001";
 let botRunning = true;
 
-// --- Provider & Signer ---
-// Using HTTP provider here (change to WebSocket if DNS issues are resolved)
+// --- Ethereum Provider & Signer ---
+// Using HTTP provider here; if you solve DNS issues, you may switch to WebSocket.
 const provider = new ethers.providers.JsonRpcProvider(
-  `wss://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+  `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
 );
 const signer = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
 
@@ -44,7 +43,7 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASSWORD }
 });
 
-// Do NOT instantiate a Telegram bot here; we expect a shared instance from main.js.
+// Do NOT create a Telegram bot instance here – we expect to receive a shared instance from main.js.
 let telegramBot;
 const telegramChatId = process.env.TELEGRAM_CHAT_ID;
 
@@ -333,7 +332,7 @@ function setupTelegramCommands() {
     }
   });
 
-  // Existing Command Handlers
+  // Additional Command Handlers
   telegramBot.onText(/\/startbot/, (msg) => {
     if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
       botRunning = true;
@@ -386,7 +385,6 @@ function setupTelegramCommands() {
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: "Bot stopped." });
       telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, "Bot stopped via menu.");
     } else if (data === "set_trade") {
-      // In a real implementation, you might request the user to send a new trade amount.
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: "Use /settradeamount <amount> to update." });
     } else if (data === "trade_info") {
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: "Use /trades to view trade info." });
@@ -452,8 +450,8 @@ function setupDashboard() {
 
 // --- Exported Initialization Function ---
 module.exports.init = function(sharedTelegramBot, sharedIo) {
-  telegramBot = sharedTelegramBot; // Set the shared TelegramBot instance
-  io = sharedIo; // Set the shared Socket.IO instance
+  telegramBot = sharedTelegramBot; // Use the shared Telegram bot instance
+  io = sharedIo; // Use the shared Socket.IO instance
 
   setupTelegramCommands();
   setupDashboard();

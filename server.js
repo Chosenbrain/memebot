@@ -1,31 +1,27 @@
 require("dotenv").config();
 const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
 
-const app = express();
-const server = http.createServer(app);
-
-// Initialize Socket.IO with CORS configuration to allow connections from your Netlify domain.
-const io = new Server(server, {
-  cors: {
-    origin: "https://memecoinbot.netlify.app/",
-    methods: ["GET", "POST"]
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-app.use(express.static("public"));
-
-io.on("connection", (socket) => {
-  console.log("New client connected");
-  socket.emit("log", "Connected to Meme Coin Bot Dashboard");
-  socket.on("disconnect", () => {
-    console.log("Client disconnected");
+/**
+ * Initializes the server module.
+ * This module sets up Socket.IO connection handling and serves static files from the "public" folder.
+ *
+ * @param {TelegramBot} sharedTelegramBot - The shared Telegram bot instance.
+ * @param {SocketIO.Server} sharedIo - The shared Socket.IO instance.
+ */
+module.exports.init = function (sharedTelegramBot, sharedIo) {
+  // Handle Socket.IO connections
+  sharedIo.on("connection", (socket) => {
+    console.log("New client connected");
+    socket.emit("log", "Connected to Meme Coin Bot Dashboard");
+    socket.on("disconnect", () => {
+      console.log("Client disconnected");
+    });
   });
-});
 
-server.listen(PORT, () => {
+  const PORT = process.env.PORT || 3000;
   console.log(`Server running on port ${PORT}`);
-  io.emit("log", `Server running on port ${PORT}`);
-});
+  sharedIo.emit("log", `Server running on port ${PORT}`);
+  if (sharedTelegramBot) {
+    sharedTelegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, `Server running on port ${PORT}`);
+  }
+};
