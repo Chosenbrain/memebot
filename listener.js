@@ -172,7 +172,6 @@ async function isHoneypot(tokenAddress) {
     const recipient = await signer.getAddress();
     const deadline = Math.floor(Date.now() / 1000) + 120;
     const amountIn = ethers.utils.parseEther(TRADE_AMOUNT.toString());
-
     const buyParams = {
       tokenIn: WETH,
       tokenOut: tokenAddress,
@@ -183,13 +182,10 @@ async function isHoneypot(tokenAddress) {
       amountOutMinimum: 0,
       sqrtPriceLimitX96: 0
     };
-
-    // Try to simulate a buy transaction
     const buyOut = await router.callStatic.exactInputSingle(buyParams, {
       value: amountIn,
       gasLimit: 300000
     });
-
     const sellParams = {
       tokenIn: tokenAddress,
       tokenOut: WETH,
@@ -200,22 +196,21 @@ async function isHoneypot(tokenAddress) {
       amountOutMinimum: 0,
       sqrtPriceLimitX96: 0
     };
-
-    // Try to simulate a sell transaction
     await router.callStatic.exactInputSingle(sellParams, { gasLimit: 300000 });
-    
     return false;
   } catch (err) {
     if (err.message && err.message.includes("missing revert data")) {
+      // Option 1: If you want to consider this an error (token might be a honeypot), return true.
       console.error("Honeypot error (missing revert data):", err.message);
-      // Return true to indicate that the token appears to be a honeypot.
       return true;
+      // Option 2: If you think it's a false positive for a safe token, you might instead:
+      // return false;
     }
     console.error("Honeypot error:", err.message);
-    // For any other error, also consider it a honeypot.
     return true;
   }
 }
+
 
 
 async function checkContractVerification(tokenAddress) {
