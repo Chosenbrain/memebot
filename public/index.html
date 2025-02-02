@@ -67,9 +67,10 @@
     </tbody>
   </table>
   
+  <!-- Socket.IO Client Script -->
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // Use your AWS server domain or IP (with HTTPS if applicable)
+    // Connect explicitly to your backend domain with HTTPS
     const socket = io("https://ladirectmodel.com");
 
     const logDiv = document.getElementById("log");

@@ -15,6 +15,7 @@ const TRADE_AMOUNT = process.env.TRADE_AMOUNT || "0.001";
 let botRunning = true;
 
 // --- Provider & Signer ---
+// Using WebSocket provider here; adjust if needed.
 const provider = new ethers.providers.JsonRpcProvider(
   `wss://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
 );
@@ -42,7 +43,7 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASSWORD }
 });
 
-// Shared instances
+// Shared instances (injected from main.js)
 let telegramBot;
 const telegramChatId = process.env.TELEGRAM_CHAT_ID;
 let io;
@@ -182,10 +183,8 @@ async function isHoneypot(tokenAddress) {
       amountOutMinimum: 0,
       sqrtPriceLimitX96: 0
     };
-    const buyOut = await router.callStatic.exactInputSingle(buyParams, {
-      value: amountIn,
-      gasLimit: 300000
-    });
+
+    const buyOut = await router.callStatic.exactInputSingle(buyParams, { value: amountIn, gasLimit: 300000 });
     const sellParams = {
       tokenIn: tokenAddress,
       tokenOut: WETH,
@@ -196,22 +195,19 @@ async function isHoneypot(tokenAddress) {
       amountOutMinimum: 0,
       sqrtPriceLimitX96: 0
     };
+
     await router.callStatic.exactInputSingle(sellParams, { gasLimit: 300000 });
     return false;
   } catch (err) {
     if (err.message && err.message.includes("missing revert data")) {
-      // Option 1: If you want to consider this an error (token might be a honeypot), return true.
-      console.error("Honeypot error (missing revert data):", err.message);
-      return true;
-      // Option 2: If you think it's a false positive for a safe token, you might instead:
-      // return false;
+      // Treat missing revert data as a non-fatal error.
+      console.warn("Honeypot warning (missing revert data):", err.message);
+      return false;
     }
     console.error("Honeypot error:", err.message);
     return true;
   }
 }
-
-
 
 async function checkContractVerification(tokenAddress) {
   try {
@@ -292,7 +288,16 @@ async function executeTrade(tokenAddress) {
     const recipient = await signer.getAddress();
     const deadline = Math.floor(Date.now() / 1000) + 120;
     const amountIn = ethers.utils.parseEther(TRADE_AMOUNT.toString());
-    const params = { tokenIn: WETH, tokenOut: tokenAddress, fee: 3000, recipient, deadline, amountIn, amountOutMinimum: 0, sqrtPriceLimitX96: 0 };
+    const params = {
+      tokenIn: WETH,
+      tokenOut: tokenAddress,
+      fee: 3000,
+      recipient,
+      deadline,
+      amountIn,
+      amountOutMinimum: 0,
+      sqrtPriceLimitX96: 0
+    };
     const tx = await router.exactInputSingle(params, { value: amountIn, gasLimit: 300000 });
     const receipt = await tx.wait();
     const price = await getTokenPrice(tokenAddress);
@@ -337,7 +342,7 @@ factoryContract.on("PairCreated", async (token0, token1, pair) => {
 // --- Telegram Command Handlers & Callback Query Handling ---
 function setupTelegramCommands() {
   telegramBot.onText(/\/menu/, (msg) => {
-    if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
+    if (msg.chat.id.toString() === telegramChatId) {
       const menuKeyboard = [
         [
           { text: "Start Bot", callback_data: "start_bot" },
@@ -349,7 +354,7 @@ function setupTelegramCommands() {
         ],
         [{ text: "Show Summary", callback_data: "show_summary" }]
       ];
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, "Main Menu: Choose an option:", {
+      telegramBot.sendMessage(telegramChatId, "🔹 *Main Menu* 🔹\nChoose an option:", {
         parse_mode: "Markdown",
         reply_markup: { inline_keyboard: menuKeyboard }
       });
@@ -357,42 +362,42 @@ function setupTelegramCommands() {
   });
 
   telegramBot.onText(/\/startbot/, (msg) => {
-    if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
+    if (msg.chat.id.toString() === telegramChatId) {
       botRunning = true;
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, "Bot started.");
+      telegramBot.sendMessage(telegramChatId, "✅ Bot started.");
     }
   });
   telegramBot.onText(/\/stopbot/, (msg) => {
-    if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
+    if (msg.chat.id.toString() === telegramChatId) {
       botRunning = false;
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, "Bot stopped.");
+      telegramBot.sendMessage(telegramChatId, "⛔ Bot stopped.");
     }
   });
   telegramBot.onText(/\/status/, (msg) => {
-    if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, botRunning ? "Bot running." : "Bot stopped.");
+    if (msg.chat.id.toString() === telegramChatId) {
+      telegramBot.sendMessage(telegramChatId, botRunning ? "✅ Bot running." : "⛔ Bot stopped.");
     }
   });
   telegramBot.onText(/\/trades/, (msg) => {
-    if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
+    if (msg.chat.id.toString() === telegramChatId) {
       try {
         const trades = JSON.parse(fs.readFileSync(tradeLogPath, "utf8"));
-        const recent = trades.slice(-5).map(t => `Token: ${t.tokenAddress}\nStatus: ${t.status}\nP/L: ${t.profitLoss || 0}`).join("\n\n");
-        telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, `Recent Trades:\n\n${recent}`);
+        const recent = trades.slice(-5).map(t => `*Token:* ${t.tokenAddress}\n*Status:* ${t.status}\n*P/L:* ${t.profitLoss || 0}`).join("\n\n");
+        telegramBot.sendMessage(telegramChatId, `*Recent Trades:*\n\n${recent}`, { parse_mode: "Markdown" });
       } catch (err) {
-        telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, "Trade log error.");
+        telegramBot.sendMessage(telegramChatId, "⚠️ Trade log error.");
       }
     }
   });
   telegramBot.onText(/\/settradeamount (.+)/, (msg, match) => {
-    if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
+    if (msg.chat.id.toString() === telegramChatId) {
       process.env.TRADE_AMOUNT = match[1];
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, `Trade amount set to ${match[1]} ETH.`);
+      telegramBot.sendMessage(telegramChatId, `Trade amount set to ${match[1]} ETH.`);
     }
   });
   telegramBot.onText(/\/summary/, (msg) => {
-    if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, generateSummary());
+    if (msg.chat.id.toString() === telegramChatId) {
+      telegramBot.sendMessage(telegramChatId, generateSummary());
     }
   });
 
@@ -401,18 +406,18 @@ function setupTelegramCommands() {
     if (data === "start_bot") {
       botRunning = true;
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: "Bot started." });
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, "Bot started via menu.");
+      telegramBot.sendMessage(telegramChatId, "✅ Bot started via menu.");
     } else if (data === "stop_bot") {
       botRunning = false;
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: "Bot stopped." });
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, "Bot stopped via menu.");
+      telegramBot.sendMessage(telegramChatId, "⛔ Bot stopped via menu.");
     } else if (data === "set_trade") {
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: "Use /settradeamount <amount> to update." });
     } else if (data === "trade_info") {
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: "Use /trades to view trade info." });
     } else if (data === "show_summary") {
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: "Fetching summary..." });
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, generateSummary());
+      telegramBot.sendMessage(telegramChatId, generateSummary());
     } else if (data === "increase_trade") {
       let currentAmount = parseFloat(process.env.TRADE_AMOUNT);
       currentAmount = (currentAmount + 0.0005).toFixed(4);
@@ -429,7 +434,7 @@ function setupTelegramCommands() {
     } else if (data.startsWith("trade_info_")) {
       const txHash = data.split("trade_info_")[1];
       await telegramBot.answerCallbackQuery(callbackQuery.id, { text: `Trade info for ${txHash}` });
-      telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, `Detailed info for trade ${txHash} can be found in the logs or dashboard.`);
+      telegramBot.sendMessage(telegramChatId, `Detailed info for trade ${txHash} can be found in the logs or dashboard.`);
     }
   });
 }
