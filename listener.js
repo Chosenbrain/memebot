@@ -172,28 +172,27 @@ async function isHoneypot(tokenAddress) {
     const recipient = await signer.getAddress();
     const deadline = Math.floor(Date.now() / 1000) + 120;
     const amountIn = ethers.utils.parseEther(TRADE_AMOUNT.toString());
-    const buyParams = {
-      tokenIn: WETH,
-      tokenOut: tokenAddress,
-      fee: 3000,
-      recipient,
-      deadline,
-      amountIn,
-      amountOutMinimum: 0,
-      sqrtPriceLimitX96: 0
+    const buyParams = { 
+      tokenIn: WETH, 
+      tokenOut: tokenAddress, 
+      fee: 3000, 
+      recipient, 
+      deadline, 
+      amountIn, 
+      amountOutMinimum: 0, 
+      sqrtPriceLimitX96: 0 
     };
 
     const buyOut = await router.callStatic.exactInputSingle(buyParams, { value: amountIn, gasLimit: 300000 });
-
-    const sellParams = {
-      tokenIn: tokenAddress,
-      tokenOut: WETH,
-      fee: 3000,
-      recipient,
-      deadline,
-      amountIn: buyOut,
-      amountOutMinimum: 0,
-      sqrtPriceLimitX96: 0
+    const sellParams = { 
+      tokenIn: tokenAddress, 
+      tokenOut: WETH, 
+      fee: 3000, 
+      recipient, 
+      deadline, 
+      amountIn: buyOut, 
+      amountOutMinimum: 0, 
+      sqrtPriceLimitX96: 0 
     };
 
     await router.callStatic.exactInputSingle(sellParams, { gasLimit: 300000 });
@@ -201,7 +200,7 @@ async function isHoneypot(tokenAddress) {
   } catch (err) {
     if (err.message && err.message.includes("missing revert data")) {
       console.error("Honeypot error (missing revert data):", err.message);
-      // Decide if you consider missing revert data a sign of a honeypot.
+      // If you consider "missing revert data" as a honeypot signal, return true.
       return true;
     }
     console.error("Honeypot error:", err.message);
