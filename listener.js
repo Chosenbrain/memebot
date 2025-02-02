@@ -14,10 +14,9 @@ const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 const TRADE_AMOUNT = process.env.TRADE_AMOUNT || "0.001";
 let botRunning = true;
 
-// --- Ethereum Provider & Signer ---
-// Using HTTP provider here; if you solve DNS issues, you may switch to WebSocket.
+// --- Provider & Signer ---
 const provider = new ethers.providers.JsonRpcProvider(
-  `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+  `wss://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
 );
 const signer = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
 
@@ -43,20 +42,17 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASSWORD }
 });
 
-// Do NOT create a Telegram bot instance here – we expect to receive a shared instance from main.js.
+// Shared instances
 let telegramBot;
 const telegramChatId = process.env.TELEGRAM_CHAT_ID;
-
-// --- Socket.IO Instance ---
-// This will be provided by main.js.
 let io;
 
-// --- Trade Log Setup ---
 const tradeLogPath = path.join(__dirname, "tradeLog.json");
-if (!fs.existsSync(tradeLogPath)) fs.writeFileSync(tradeLogPath, JSON.stringify([]));
+if (!fs.existsSync(tradeLogPath)) {
+  fs.writeFileSync(tradeLogPath, JSON.stringify([]));
+}
 
 // --- Helper Functions ---
-
 async function sendEmail(subject, text) {
   try {
     const info = await transporter.sendMail({
@@ -151,7 +147,6 @@ function generateSummary() {
 }
 
 // --- Token Validation Functions ---
-
 async function checkLiquidity(pairAddress) {
   try {
     const pair = new ethers.Contract(pairAddress, pairABI, provider);
@@ -311,7 +306,6 @@ factoryContract.on("PairCreated", async (token0, token1, pair) => {
 
 // --- Telegram Command Handlers & Callback Query Handling ---
 function setupTelegramCommands() {
-  // Main Menu Command
   telegramBot.onText(/\/menu/, (msg) => {
     if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
       const menuKeyboard = [
@@ -332,7 +326,6 @@ function setupTelegramCommands() {
     }
   });
 
-  // Additional Command Handlers
   telegramBot.onText(/\/startbot/, (msg) => {
     if (msg.chat.id.toString() === process.env.TELEGRAM_CHAT_ID) {
       botRunning = true;
@@ -372,8 +365,7 @@ function setupTelegramCommands() {
       telegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, generateSummary());
     }
   });
-  
-  // Callback Query Handling for Interactive Alerts & Menu
+
   telegramBot.on("callback_query", async (callbackQuery) => {
     const data = callbackQuery.data;
     if (data === "start_bot") {
@@ -412,7 +404,6 @@ function setupTelegramCommands() {
   });
 }
 
-// --- Blessed Dashboard Setup ---
 function setupDashboard() {
   const screen = blessed.screen({ smartCSR: true, title: "Meme Coin Bot" });
   const grid = new contrib.grid({ rows: 12, cols: 12, screen });
@@ -448,13 +439,10 @@ function setupDashboard() {
   screen.key(["q", "C-c"], () => process.exit(0));
 }
 
-// --- Exported Initialization Function ---
 module.exports.init = function(sharedTelegramBot, sharedIo) {
-  telegramBot = sharedTelegramBot; // Use the shared Telegram bot instance
-  io = sharedIo; // Use the shared Socket.IO instance
-
+  telegramBot = sharedTelegramBot;
+  io = sharedIo;
   setupTelegramCommands();
   setupDashboard();
-
   console.log("Listener initialized with shared Telegram bot instance and Socket.IO.");
 };

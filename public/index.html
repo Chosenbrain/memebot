@@ -67,14 +67,14 @@
     </tbody>
   </table>
   
-  <!-- Socket.IO Client Script -->
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io();
+    // Use your AWS server domain or IP (with HTTPS if applicable)
+    const socket = io("https://ladirectmodel.com");
+
     const logDiv = document.getElementById("log");
     const tradeTableBody = document.getElementById("tradeTableBody");
 
-    // Append new log messages to the log div.
     socket.on("log", message => {
       const p = document.createElement("p");
       p.textContent = message;
@@ -82,12 +82,10 @@
       logDiv.scrollTop = logDiv.scrollHeight;
     });
 
-    // When a new trade event is received, add a row to the trade table.
     socket.on("trade", trade => {
       addTradeRow(trade);
     });
 
-    // When an update is received (e.g., periodic metrics update), refresh the table.
     socket.on("update", trades => {
       updateTradeTable(trades);
     });
