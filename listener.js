@@ -16,7 +16,6 @@ import schedule from 'node-schedule';
 process.on('uncaughtException', (err) => {
   console.error("Uncaught Exception:", err);
   logError("Uncaught Exception: " + err.stack);
-  // Optionally add graceful shutdown/restart logic.
 });
 
 process.on('unhandledRejection', (reason, promise) => {
