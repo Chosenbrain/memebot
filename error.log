@@ -1,0 +1,7 @@
+[2025-02-12T16:00:56.144Z] Uncaught Exception: ReferenceError: exp is not defined
+    at file:///Users/chosen/Desktop/meme-coin-bot/listener.js:565:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:193:25)
+    at async Promise.all (index 0)
+    at async ESMLoader.import (node:internal/modules/esm/loader:530:24)
+    at async loadESM (node:internal/process/esm_loader:91:5)
+    at async handleMainPromise (node:internal/modules/run_main:65:12)

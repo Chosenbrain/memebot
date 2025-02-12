@@ -1,7 +1,9 @@
-require("dotenv").config();
-const express = require("express");
+import dotenv from "dotenv";
+dotenv.config();
 
-module.exports.init = function (sharedTelegramBot, sharedIo) {
+import express from "express";
+
+export function init(sharedTelegramBot, sharedIo) {
   sharedIo.on("connection", (socket) => {
     console.log("New client connected");
     socket.emit("log", "Connected to Meme Coin Bot Dashboard");
@@ -13,8 +15,10 @@ module.exports.init = function (sharedTelegramBot, sharedIo) {
   const PORT = process.env.PORT || 3000;
   console.log(`Server running on port ${PORT}`);
   sharedIo.emit("log", `Server running on port ${PORT}`);
+  
   if (sharedTelegramBot) {
     sharedTelegramBot.sendMessage(process.env.TELEGRAM_CHAT_ID, `Server running on port ${PORT}`);
   }
+  
   console.log("Server module initialized.");
-};
+}

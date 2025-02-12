@@ -1,29 +1,65 @@
 // listener.js
-require("dotenv").config();
-const { ethers } = require("ethers");
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
-const nodemailer = require("nodemailer");
-const moment = require("moment");
-const blessed = require("blessed");
-const contrib = require("blessed-contrib");
-const schedule = require("node-schedule");
+import dotenv from 'dotenv';
+dotenv.config();
 
-// ===== Constants & Globals =====
+import { ethers } from 'ethers';
+import fs from 'fs';
+import path from 'path';
+import axios from 'axios';
+import nodemailer from 'nodemailer';
+import moment from 'moment';
+import blessed from 'blessed';
+import contrib from 'blessed-contrib';
+import schedule from 'node-schedule';
+
+// ================= Global Error Handling =================
+process.on('uncaughtException', (err) => {
+  console.error("Uncaught Exception:", err);
+  logError("Uncaught Exception: " + err.stack);
+  // Optionally add graceful shutdown/restart logic.
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error("Unhandled Rejection:", reason);
+  logError("Unhandled Rejection: " + reason);
+});
+
+// ================= Logger Function =================
+function logError(message) {
+  const logMessage = `[${new Date().toISOString()}] ${message}\n`;
+  try {
+    fs.appendFileSync("error.log", logMessage);
+  } catch (err) {
+    console.error("Failed to write error log:", err);
+  }
+}
+
+// ================= Constants & Globals =================
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
-// TRADE_AMOUNT should represent the amount in ETH equivalent to $1 (set appropriately in .env)
-const TRADE_AMOUNT = process.env.TRADE_AMOUNT || "0.001";
+// TRADE_AMOUNT now represents $10 worth of ETH (default 0.01 ETH)
+const TRADE_AMOUNT = process.env.TRADE_AMOUNT || "0.01";
 let botRunning = true;
 
-// ===== Provider & Signer =====
-// Using WebSocket provider for real‑time events.
-const provider = new ethers.providers.JsonRpcProvider(
-  `wss://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
-);
+// ================= Provider & Signer =================
+// Use both Infura and Alchemy via FallbackProvider
+let provider;
+try {
+  const alchemyProvider = new ethers.providers.WebSocketProvider(
+    `wss://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+  );
+  const infuraProvider = new ethers.providers.WebSocketProvider(
+    `wss://mainnet.infura.io/ws/v3/${process.env.INFURA_PROJECT_ID}`
+  );
+  provider = new ethers.providers.FallbackProvider([alchemyProvider, infuraProvider]);
+  console.log("FallbackProvider created using Alchemy and Infura.");
+} catch (err) {
+  console.error("Error initializing provider:", err);
+  logError("Error initializing provider: " + err.stack);
+  process.exit(1);
+}
 const signer = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY, provider);
 
-// ===== Contract Setup =====
+// ================= Contract Setup =================
 const factoryAddress = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
 const factoryABI = ["event PairCreated(address indexed token0, address indexed token1, address pair, uint)"];
 const factoryContract = new ethers.Contract(factoryAddress, factoryABI, provider);
@@ -39,24 +75,24 @@ const routerABI = [
   "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) external payable returns (uint256)"
 ];
 
-// ===== Notification Setup =====
+// ================= Notification Setup =================
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_PASSWORD }
 });
 
-// ===== Shared Instances (injected via main.js) =====
-let telegramBot; // Do not create here; use the shared instance.
+// ================= Shared Instances (Injected via main.js) =================
+let telegramBot; // Will be set via the init() function.
 const telegramChatId = process.env.TELEGRAM_CHAT_ID;
-let io; // Shared Socket.IO instance.
+let io; // Shared Socket.IO instance (if applicable).
 
-// ===== Trade Log Setup =====
-const tradeLogPath = path.join(__dirname, "tradeLog.json");
+// ================= Trade Log Setup =================
+const tradeLogPath = path.join(process.cwd(), "tradeLog.json");
 if (!fs.existsSync(tradeLogPath)) {
   fs.writeFileSync(tradeLogPath, JSON.stringify([]));
 }
 
-// ===== Helper Functions =====
+// ================= Helper Functions =================
 
 async function sendEmail(subject, text) {
   try {
@@ -70,6 +106,7 @@ async function sendEmail(subject, text) {
     if (io) io.emit("log", `Email sent: ${subject}`);
   } catch (err) {
     console.error("Email error:", err.message);
+    logError("Email error: " + err.stack);
     if (io) io.emit("log", `Email error: ${err.message}`);
   }
 }
@@ -81,6 +118,7 @@ async function sendTelegram(message) {
     if (io) io.emit("log", `Telegram: ${message}`);
   } catch (err) {
     console.error("Telegram error:", err.message);
+    logError("Telegram error: " + err.stack);
     if (io) io.emit("log", `Telegram error: ${err.message}`);
   }
 }
@@ -94,6 +132,7 @@ async function sendTelegramInteractive(message, keyboard) {
     console.log("Interactive Telegram message sent.");
   } catch (err) {
     console.error("Telegram interactive error:", err.message);
+    logError("Telegram interactive error: " + err.stack);
   }
 }
 
@@ -105,6 +144,7 @@ function logTrade(trade) {
     if (io) io.emit("trade", trade);
   } catch (err) {
     console.error("Log trade error:", err.message);
+    logError("Log trade error: " + err.stack);
     if (io) io.emit("log", `Log trade error: ${err.message}`);
   }
 }
@@ -116,6 +156,7 @@ async function getTokenPrice(tokenAddress) {
     return response.data[tokenAddress.toLowerCase()]?.usd || 0;
   } catch (err) {
     console.error("Token price error:", err.message);
+    logError("Token price error: " + err.stack);
     return 0;
   }
 }
@@ -133,6 +174,7 @@ async function updateMetrics() {
     if (io) io.emit("update", trades);
   } catch (err) {
     console.error("Metrics error:", err.message);
+    logError("Metrics error: " + err.stack);
   }
 }
 setInterval(updateMetrics, 60000);
@@ -147,11 +189,12 @@ function generateSummary() {
     return `📊 Summary (${moment().format("YYYY-MM-DD")}): Total: ${total}, Profitable: ${profitable}, Unprofitable: ${unprofitable}, Net: ${net.toFixed(4)} USD`;
   } catch (err) {
     console.error("Summary error:", err.message);
+    logError("Summary error: " + err.stack);
     return "Summary error";
   }
 }
 
-// ===== Token Validation Functions =====
+// ================= Token Validation Functions =================
 
 async function checkLiquidity(pairAddress) {
   try {
@@ -168,10 +211,10 @@ async function checkLiquidity(pairAddress) {
     return wethReserve.gte(minLiquidity);
   } catch (err) {
     console.error("Liquidity error:", err.message);
+    logError("Liquidity error: " + err.stack);
     return false;
   }
 }
-
 
 async function isHoneypot(tokenAddress) {
   try {
@@ -205,17 +248,14 @@ async function isHoneypot(tokenAddress) {
     await router.callStatic.exactInputSingle(sellParams, { gasLimit: 300000 });
     return false;
   } catch (err) {
-    // If the error message includes "missing revert data", we assume it’s not fatal
     if (err.message && err.message.toLowerCase().includes("missing revert data")) {
       return false;
     }
-    // For other errors, log them and treat the token as a honeypot.
     console.error("Honeypot error:", err.message);
+    logError("Honeypot error: " + err.stack);
     return true;
   }
 }
-
-
 
 async function checkContractVerification(tokenAddress) {
   try {
@@ -224,6 +264,7 @@ async function checkContractVerification(tokenAddress) {
     return res.data.status === "1" && res.data.result[0]?.SourceCode;
   } catch (err) {
     console.error("Contract verification error:", err.message);
+    logError("Contract verification error: " + err.stack);
     return false;
   }
 }
@@ -234,6 +275,7 @@ async function isOwnershipRenounced(tokenAddress) {
     return (await token.owner()) === ethers.constants.AddressZero;
   } catch (err) {
     console.error("Ownership error:", err.message);
+    logError("Ownership error: " + err.stack);
     return false;
   }
 }
@@ -250,6 +292,7 @@ async function checkSupplyDistribution(tokenAddress) {
     return parseFloat(ethers.utils.formatEther(balance)) / parseFloat(ethers.utils.formatEther(totalSupply)) <= 0.1;
   } catch (err) {
     console.error("Supply distribution error:", err.message);
+    logError("Supply distribution error: " + err.stack);
     return false;
   }
 }
@@ -269,25 +312,51 @@ async function getGoogleSentiment(tokenSymbol) {
     return count >= 2;
   } catch (err) {
     console.error("Google sentiment error:", err.message);
+    logError("Google sentiment error: " + err.stack);
     return false;
   }
 }
 
 async function validateToken(tokenAddress, pairAddress) {
-  if (!(await checkLiquidity(pairAddress))) return false;
-  if (await isHoneypot(tokenAddress)) return false;
-  if (!(await checkContractVerification(tokenAddress))) return false;
-  if (!(await isOwnershipRenounced(tokenAddress))) return false;
-  if (!(await checkSupplyDistribution(tokenAddress))) return false;
-  let symbol = tokenAddress;
   try {
-    const token = new ethers.Contract(tokenAddress, ["function symbol() public view returns (string)"], signer);
-    symbol = await token.symbol();
+    if (!(await checkLiquidity(pairAddress))) {
+      console.error(`Token ${tokenAddress} failed liquidity check.`);
+      return false;
+    }
+    if (await isHoneypot(tokenAddress)) {
+      console.error(`Token ${tokenAddress} appears to be a honeypot.`);
+      return false;
+    }
+    if (!(await checkContractVerification(tokenAddress))) {
+      console.error(`Token ${tokenAddress} failed contract verification.`);
+      return false;
+    }
+    if (!(await isOwnershipRenounced(tokenAddress))) {
+      console.error(`Token ${tokenAddress} did not have renounced ownership.`);
+      return false;
+    }
+    if (!(await checkSupplyDistribution(tokenAddress))) {
+      console.error(`Token ${tokenAddress} failed supply distribution check.`);
+      return false;
+    }
+    let symbol = tokenAddress;
+    try {
+      const token = new ethers.Contract(tokenAddress, ["function symbol() public view returns (string)"], signer);
+      symbol = await token.symbol();
+    } catch (err) {
+      console.error("Symbol fetch error:", err.message);
+      logError("Symbol fetch error: " + err.stack);
+    }
+    if (!(await getGoogleSentiment(symbol))) {
+      console.error(`Token ${tokenAddress} failed Google sentiment check.`);
+      return false;
+    }
+    return true;
   } catch (err) {
-    console.error("Symbol fetch error:", err.message);
+    console.error("Validation error for token", tokenAddress, ":", err.message);
+    logError("Validation error for token " + tokenAddress + ": " + err.stack);
+    return false;
   }
-  if (!(await getGoogleSentiment(symbol))) return false;
-  return true;
 }
 
 async function executeTrade(tokenAddress) {
@@ -322,32 +391,39 @@ async function executeTrade(tokenAddress) {
     return { success: true, txHash: receipt.transactionHash };
   } catch (err) {
     console.error("Trade error:", err.message);
+    logError("Trade error: " + err.stack);
     if (io) io.emit("log", `Trade error: ${err.message}`);
     return { success: false };
   }
 }
 
-// ===== Event Listener for Uniswap PairCreated =====
+// ================= Event Listener for Uniswap PairCreated =================
 factoryContract.on("PairCreated", async (token0, token1, pair) => {
-  if (!botRunning) return;
-  if (io) io.emit("log", `New Pair Detected: token0: ${token0}, token1: ${token1}, pair: ${pair}`);
-  let candidate = null;
-  if (token0.toLowerCase() === WETH.toLowerCase()) candidate = token1;
-  else if (token1.toLowerCase() === WETH.toLowerCase()) candidate = token0;
-  if (!candidate) return;
-  if (io) io.emit("log", `Candidate token: ${candidate}`);
-  const valid = await validateToken(candidate, pair);
-  if (io) io.emit("log", `Validation for ${candidate}: ${valid}`);
-  if (valid) {
-    if (io) io.emit("log", `Executing trade for ${candidate}`);
-    await executeTrade(candidate);
-  } else {
-    if (io) io.emit("log", `Token ${candidate} failed validation.`);
-    console.log("Token invalid:", candidate);
+  try {
+    if (!botRunning) return;
+    if (io) io.emit("log", `New Pair Detected: token0: ${token0}, token1: ${token1}, pair: ${pair}`);
+    let candidate = null;
+    if (token0.toLowerCase() === WETH.toLowerCase()) candidate = token1;
+    else if (token1.toLowerCase() === WETH.toLowerCase()) candidate = token0;
+    if (!candidate) return;
+    if (io) io.emit("log", `Candidate token: ${candidate}`);
+    const valid = await validateToken(candidate, pair);
+    if (io) io.emit("log", `Validation for ${candidate}: ${valid}`);
+    if (valid) {
+      if (io) io.emit("log", `Executing trade for ${candidate}`);
+      await executeTrade(candidate);
+    } else {
+      if (io) io.emit("log", `Token ${candidate} failed validation.`);
+      console.log("Token invalid:", candidate);
+    }
+  } catch (err) {
+    console.error("Error handling PairCreated event:", err.message);
+    logError("Error handling PairCreated event: " + err.stack);
+    if (io) io.emit("log", `PairCreated event error: ${err.message}`);
   }
 });
 
-// ===== Telegram Command Handlers & Callback Query Handling =====
+// ================= Telegram Command Handlers & Callback Query Handling =================
 function setupTelegramCommands() {
   telegramBot.onText(/\/menu/, (msg) => {
     if (msg.chat.id.toString() === telegramChatId) {
@@ -482,10 +558,29 @@ function setupDashboard() {
   screen.key(["q", "C-c"], () => process.exit(0));
 }
 
-module.exports.init = function(sharedTelegramBot, sharedIo) {
+// ================= Initialization Function =================
+function init(sharedTelegramBot, sharedIo) {
   telegramBot = sharedTelegramBot;
   io = sharedIo;
   setupTelegramCommands();
   setupDashboard();
   console.log("Listener initialized with shared Telegram bot instance and Socket.IO.");
+}
+
+// ================= Exports =================
+export {
+  init,
+  getTokenPrice,
+  checkLiquidity,
+  isHoneypot,
+  checkContractVerification,
+  isOwnershipRenounced,
+  checkSupplyDistribution,
+  getGoogleSentiment,
+  validateToken,
+  executeTrade,
+  signer,
+  logTrade,
+  sendEmail,
+  sendTelegram
 };
